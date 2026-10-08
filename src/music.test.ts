@@ -64,9 +64,9 @@ describe('polymeter timeline', () => {
   it('marks primary bars and grouped accents', () => {
     const model = createPolymeter(meters([[7, 8, [2, 2, 3]], [4, 4, [1, 1, 1, 1]]]));
     const sevenEight = model.layers[0].events.slice(0, 7).map(({ accent }) => accent);
-    expect(sevenEight).toEqual(['primary', 'pulse', 'secondary', 'pulse', 'secondary', 'pulse', 'pulse']);
+    expect(sevenEight).toEqual(['bar', 'event', 'group', 'event', 'group', 'event', 'event']);
     expect(model.layers[1].events.slice(0, 8).map(({ accent }) => accent)).toEqual([
-      'primary', 'pulse', 'secondary', 'pulse', 'secondary', 'pulse', 'secondary', 'pulse',
+      'bar', 'event', 'group', 'event', 'group', 'event', 'group', 'event',
     ]);
   });
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, CSSProperties } from 'react';
-import { AudioEngine } from './audio';
+import { AudioEngine, type SoundPalette } from './audio';
 import {
   createPolymeter, createPolyrhythm, defaultGrouping, formatGrouping, formatMeters,
   formatRatio, parseGrouping, parseMeters, parseRatio,
@@ -87,8 +87,8 @@ function Orbit({
     {meterLayer && markers.map((event) => {
       const phase = event.markerIndex / count;
       const point = polar(radius, phase);
-      const boundary = event.accent === 'primary';
-      const groupBoundary = event.accent === 'secondary';
+      const boundary = event.accent === 'bar';
+      const groupBoundary = event.accent === 'group';
       const inner = polar(radius - (boundary ? 10 : groupBoundary ? 7 : 3), phase);
       const outer = polar(radius + (boundary ? 11 : groupBoundary ? 8 : 3), phase);
       return <g key={event.markerIndex} className="meter-pulse" data-marker-index={event.markerIndex}>
@@ -241,6 +241,13 @@ export default function App() {
   const [bpm, setBpm] = useState(120);
   const [volume, setVolume] = useState(0.55);
   const [masterAudio, setMasterAudio] = useState(true);
+  const [palette, setPalette] = useState<SoundPalette>('studio');
+  const [velocity, setVelocity] = useState(0.8);
+  const [gridSound, setGridSound] = useState(false);
+  const [alignmentSound, setAlignmentSound] = useState(false);
+  const [ghostSound, setGhostSound] = useState(true);
+  const [soloId, setSoloId] = useState<string | null>(null);
+  const [layerAudio, setLayerAudio] = useState<Record<string, { volume: number; pan: number }>>({});
   const [playing, setPlaying] = useState(false);
   const [selectedId, setSelectedId] = useState('rhythm-a');
   const [audioError, setAudioError] = useState('');
@@ -257,9 +264,10 @@ export default function App() {
   const selectedLayer = activeLayers.find(({ id }) => id === selectedId) ?? activeLayers[0];
 
   useEffect(() => {
-    engine.setTimeline(model.events, model.cycleBeats);
+    const gridCells = mode === 'meter' ? (model as PolymeterModel).cyclePulses : (model as PolyrhythmModel).commonTicks;
+    engine.setTimeline(model.events, model.cycleBeats, gridCells);
     setPlaying(engine.isPlaying);
-  }, [engine, model]);
+  }, [engine, model, mode]);
 
   useEffect(() => {
     engine.setBpm(bpm);
@@ -268,14 +276,28 @@ export default function App() {
   useEffect(() => {
     engine.setVolume(volume);
     engine.setMasterEnabled(masterAudio);
+    engine.setPalette(palette);
+    engine.setVelocity(velocity);
+    engine.setGridEnabled(gridSound);
+    engine.setAlignmentEnabled(alignmentSound);
+    engine.setGhostEnabled(ghostSound);
+    engine.setSolo(soloId);
     for (const layer of [...rhythms, ...meters]) engine.setMuted(layer.id, layer.muted);
-  }, [engine, masterAudio, meters, rhythms, volume]);
+    for (const layer of activeLayers) {
+      engine.setLayerVolume(layer.id, layerAudio[layer.id]?.volume ?? 1);
+      engine.setLayerPan(layer.id, layerAudio[layer.id]?.pan ?? 0);
+    }
+  }, [activeLayers, alignmentSound, engine, ghostSound, gridSound, layerAudio, masterAudio, meters, palette, rhythms, soloId, velocity, volume]);
 
   useEffect(() => () => engine.destroy(), [engine]);
 
   useEffect(() => {
     if (!activeLayers.some(({ id }) => id === selectedId)) setSelectedId(activeLayers[0]?.id ?? '');
   }, [activeLayers, selectedId]);
+
+  useEffect(() => {
+    if (soloId && !activeLayers.some(({ id }) => id === soloId)) setSoloId(null);
+  }, [activeLayers, soloId]);
 
   const applyRhythms = (values: number[]) => {
     const next = values.map((divisions, index) => ({
@@ -488,6 +510,26 @@ export default function App() {
             <input id="volume-slider" aria-label="Master volume" type="range" min="0" max="1" step="0.01" value={volume} onChange={(event) => setVolume(Number(event.target.value))} style={{ '--range-progress': `${volume * 100}%` } as CSSProperties} />
           </div>
         </section>
+        <details className="audio-design" open>
+          <summary><span className="eyebrow">SOUND DESIGN</span><span className="audio-design-hint">VOICES · ACCENTS · SPACE</span></summary>
+          <div className="audio-options">
+            <label className="audio-option"><span className="micro-label">PALETTE</span><select value={palette} onChange={(event) => setPalette(event.target.value as SoundPalette)}>
+              <option value="studio">Studio</option><option value="soft">Soft</option><option value="bright">Bright</option>
+            </select></label>
+            <label className="audio-option velocity-option"><span className="micro-label">ACCENT STRENGTH</span><input type="range" min="0.4" max="1.4" step="0.01" value={velocity} onChange={(event) => setVelocity(Number(event.target.value))} style={{ '--range-progress': `${((velocity - 0.4) / 1) * 100}%` } as CSSProperties} /></label>
+            <label className="audio-check"><input type="checkbox" checked={gridSound} onChange={(event) => setGridSound(event.target.checked)} />GRID SOUND</label>
+            <label className="audio-check"><input type="checkbox" checked={alignmentSound} onChange={(event) => setAlignmentSound(event.target.checked)} />ALIGNMENT CUE</label>
+            <label className="audio-check"><input type="checkbox" checked={ghostSound} onChange={(event) => setGhostSound(event.target.checked)} />GHOST OTHER LAYERS</label>
+          </div>
+          <div className="audio-layer-list">
+            {activeLayers.map((layer, index) => <div className="audio-layer" key={layer.id}>
+              <span className="audio-layer-name"><i className="layer-color" style={{ backgroundColor: COLORS[index % COLORS.length] }} />{mode === 'explore' ? `RHYTHM ${index + 1}` : `PART ${index + 1}`}</span>
+              <button className={`solo-button${soloId === layer.id ? ' active' : ''}`} aria-pressed={soloId === layer.id} onClick={() => setSoloId((current) => current === layer.id ? null : layer.id)}>SOLO</button>
+              <label><span className="micro-label">LEVEL</span><input aria-label={`${mode === 'explore' ? 'Rhythm' : 'Part'} ${index + 1} volume`} type="range" min="0" max="1" step="0.01" value={layerAudio[layer.id]?.volume ?? 1} onChange={(event) => setLayerAudio((current) => ({ ...current, [layer.id]: { volume: Number(event.target.value), pan: current[layer.id]?.pan ?? 0 } }))} style={{ '--range-progress': `${(layerAudio[layer.id]?.volume ?? 1) * 100}%` } as CSSProperties} /></label>
+              <label><span className="micro-label">PAN</span><input aria-label={`${mode === 'explore' ? 'Rhythm' : 'Part'} ${index + 1} stereo position`} type="range" min="-1" max="1" step="0.01" value={layerAudio[layer.id]?.pan ?? 0} onChange={(event) => setLayerAudio((current) => ({ ...current, [layer.id]: { volume: current[layer.id]?.volume ?? 1, pan: Number(event.target.value) } }))} style={{ '--range-progress': `${((layerAudio[layer.id]?.pan ?? 0) + 1) * 50}%` } as CSSProperties} /></label>
+            </div>)}
+          </div>
+        </details>
         {audioError && <p className="error-message" role="alert">{audioError}</p>}
 
         <section className="control-deck" aria-label={mode === 'explore' ? 'Polyrhythm controls' : 'Polymeter controls'}>

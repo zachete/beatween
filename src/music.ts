@@ -3,7 +3,7 @@ export const MAX_VALUE = 32;
 export const MAX_CYCLE_UNITS = 1024;
 export const DENOMINATORS = [1, 2, 4, 8, 16] as const;
 
-export type Accent = 'primary' | 'secondary' | 'pulse';
+export type Accent = 'event' | 'group' | 'bar';
 
 export type RhythmLayer = {
   id: string;
@@ -102,7 +102,7 @@ export function createPolyrhythm(layers: RhythmLayer[]): PolyrhythmModel {
       beat: (markerIndex / layer.divisions) * referenceBeats,
       layerId: layer.id,
       layerIndex,
-      accent: (markerIndex === 0 ? 'primary' : 'pulse') as Accent,
+      accent: 'event' as Accent,
       markerIndex,
     }));
     return { ...layer, label: String(layer.divisions), events };
@@ -189,7 +189,7 @@ export function createPolymeter(layers: MeterLayer[]): PolymeterModel {
         beat: markerIndex * (4 / commonDenominator),
         layerId: layer.id,
         layerIndex,
-        accent: inBar === 0 ? 'primary' : groupStarts.has(inBar) ? 'secondary' : 'pulse',
+        accent: inBar === 0 ? 'bar' : groupStarts.has(inBar) ? 'group' : 'event',
         markerIndex,
       };
     });
